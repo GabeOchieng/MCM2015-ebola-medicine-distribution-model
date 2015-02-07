@@ -8,86 +8,128 @@ from simGlobal import *
 
 
 #Parameters for simulation
-random.seed(sys.argv[1])
+simName = (sys.argv[1])
+random.seed(sys.argv[2])
+time = open("../data/" + simName + "_time.csv", "w")
+total = open("../data/" + simName + "_total.csv", "w")
+log = open("../data/" + simName + "_log.csv", "w")
 
-print("Random seed: " + sys.argv[1])
+print("Simulation name: " + sys.argv[1])
+print("Random seed: " + sys.argv[2])
+log.write("Simulation name: " + sys.argv[1] + "\n")
+log.write("Random seed: " + sys.argv[2] + "\n")
 
-maxTimeSteps = 200          #In days
-percentBeginLatent = 0.2    #Percent that start in latent state
-percentageDoctors = 0.06    #Percentage per region that are doctors
+#Global parameters
+maxTimeSteps = 365          #In days
+vaccinePumpTime = 30        #In days
+vaccinePumpAmount = 400     #In doses
+medsPumpTime = 30           #In days
+medsPumpAmount = 10000       #In doses (all will be split amongst hubs!)
+initVaccinesPerRegion = [1000, 500] #Array, #vaccines/region
+initMedsPerRegion = [1000, 500]  #Array, #meds/region
+
+#Population parameters
+percentBeginLatent = 0.1    #Percent that start in latent state
+percentDoctors = 0.06    #Percentage per region that are doctors
+
+#Region paramters
+regionNames =["A", "B"]     #Names of regions
+locations = [[0,0], [-50,100]]  #Array of arrays of coordinates
+populations = [100000, 20000]   #Array of initial populations
+isHub = [True, True]    #Array of bools, true if recieves large shipments  
+
+#Hospital parameters
+numHospitalsPerRegion = [2, 1]  #Array of values, number in each region
+bedsPerHospital = 2000          #Maybe array at some point?
+
+log.write("vaccinePumpTime: " + str(vaccinePumpTime) + "\n")
+log.write("vaccinePumpAmount: " + str(vaccinePumpAmount) + "\n")
+log.write("medsPumpTime: " + str(medsPumpTime) + "\n")
+log.write("initVaccinesPerRegion: " + str(initVaccinesPerRegion) + "\n")
+log.write("initMedsPerRegion: " + str(initMedsPerRegion) + "\n")
+log.write("percentBeginLatent: " + str(percentBeginLatent) + "\n")
+log.write("percentDoctors: " + str(percentDoctors) + "\n")
+log.write("regionNames: " + str(regionNames) + "\n")
+log.write("locations: " + str(locations) + "\n")
+log.write("populations: " + str(populations) + "\n")
+log.write("isHub: " + str(isHub) + "\n")
+log.write("numHospitalsPerRegion: " + str(numHospitalsPerRegion) + "\n")
+log.write("bedsPerHospital: " + str(bedsPerHospital) + "\n")
 
 #Create regions
-A = Region("A", [0,0], True, 100000, LiberiaParams)
-B = Region("B", [-5,10], True, 10000, LiberiaParams)
+regions = []
+paramsLists = [LiberiaParams, LiberiaParams]    #Array of arrays of parameters
+for i in range(0, len(regionNames)):
+    regions.append(Region(regionNames[i], locations[i], isHub[i], paramsLists[i]))
 
-#Connect regions
-A.connectedRegions = [B]
-B.connectedRegions = [A]
+#Parameter DON'T FORGAYT
+regionConnections = ([[regions[1]], 
+                      [regions[0]]])  #List of list of connections
+log.write("regionConnections: " + str(regionConnections) + "\n")
 
-#Creat people
-people_A = []
-for i in range(0,A.popDens):
-    people_A.append(Person("p", "s", A))
-    chance = random.uniform(0,1)
-    if chance < percentBeginLatent:
-        people_A[i].state = "l"
-    
-people_B = []
-for i in range(0,B.popDens):
-    people_B.append(Person("p", "s", B))
-    chance = random.uniform(0,1)
-    if chance < percentBeginLatent:
-        people_B[i].state = "l"
+#Create people
+allPeople = []    #List for each region
+for i in range(0, len(regions)):
+    allPeople.append([])
+    for j in range(0, populations[i]):
+        allPeople[i].append(Person("p", "s", regions[i]))
+        chance = random.uniform(0,1)
+        if chance < percentBeginLatent:
+            allPeople[i][j].state = "l"
+        elif chance < (percentBeginLatent + percentDoctors):
+            allPeople[i][j].occupation = "s"
 
-#Create doctors
-doctors_A = []
-for i in range(0, math.trunc(A.popDens*percentageDoctors)):
-    doctors_A.append(Person("d", "s", A))
+#Create hospitals
+allHospitals = []     #List for each region
+for i in range(0, len(regions)):
+    allHospitals.append([])
+    for j in range(0, numHospitalsPerRegion[i]):
+        allHospitals[i].append(Hospital(regions[i], bedsPerHospital,
+                               float(initVaccinesPerRegion[i])/numHospitalsPerRegion[i],
+                               float(initMedsPerRegion[i])/numHospitalsPerRegion[i]))
 
-doctors_B = []
-for i in range(0, math.trunc(B.popDens*percentageDoctors)):
-    doctors_B.append(Person("d", "s", B))
 
-#Creat Hospitals
-hospitals_A = []
-hospitals_A.append(Hospital(A, doctors_A, 100, 100))
-hospitals_A.append(Hospital(A, doctors_A, 100, 100))
-A.people = people_A
-A.hospitals = hospitals_A
-A.doctors = doctors_A
+#Associate hospitals/people with regions
+for i in range(0, len(regions)):
+    regions[i].hospitals = allHospitals[i]
+    regions[i].people = allPeople[i]
+    regions[i].updateTotals()
 
-hospitals_B = []
-hospitals_B.append(Hospital(B, doctors_B, 100, 100))
-hospitals_B.append(Hospital(B, doctors_B, 100, 100))
-B.people = people_B
-B.hospitals = hospitals_B
-B.doctors = doctors_B
-
-#Wrapping things into nice little lists
-allPeople = [people_A, people_B]
-allDoctors = [doctors_A, doctors_B]
-allHospitals = [hospitals_A, hospitals_B] #Might not use
-allRegions = [A,B]
 
 #Data stuff
-data = [["day", "numberNewlyInfected", "numberNewlyCured", "numberNewlyVaccinated",
-        "numberNewlyDied", "numberNewlyBuried", "numberMoved"]]
-totals = [0,0,0,0,0,0,0]
+data = [["Day", "NumberNewlyInfected", "NumberNewlyCured", "NumberNewlyVaccinated",
+        "NumberNewlyDied", "NumberNewlyBuried", "NumberHospitalized", "NumberMoved"]]
+totals = [0,0,0,0,0,0,0,0]
+
+#################################
 #Begin simulation
+#################################
 for t in range(0, maxTimeSteps):
-    #[timestep, numberNewlyInfected, numberNewlyCured, numberNewlyVaccinated,
-    #numberNewlyDied, numberNewlyBuried, numberMoved]
-    currentDataRow = [t, 0, 0, 0, 0, 0, 0]
+    currentDataRow = [t, 0, 0, 0, 0, 0, 0, 0]
+   
+    #Add vaccines/meds if they've arrived
+    if (t % vaccinePumpTime) == 0:    #Deliver vaccines to hubs
+        for r in regions:
+            if r.isHub:
+                for h in r.hospitals:
+                    h.vaccines = (h.vaccines + vaccinePumpAmount/len(r.hospitals))
+
+    if (t % medsPumpTime) == 0:       #Deliver meds to hubs
+        for r in regions:
+            if r.isHub:
+                for h in r.hospitals:
+                    h.meds = (h.meds + medsPumpAmount/len(r.hospitals))
     
     #Let people interact
     for people in allPeople:
         for p in people:
             Activate(p, currentDataRow)
-    data.append(currentDataRow)
-    totals = [sum(x) for x in zip(currentDataRow, totals)]
 
-    #Inform regions of their new people
-    for r in allRegions:
+    data.append(currentDataRow) #Append data to time-resolved list
+    totals = [sum(x) for x in zip(currentDataRow, totals)]  #Add new data to total
+
+    #Update region population/infection totals
+    for r in regions:
         r.people = []
         total_i1 = 0
         total_i2 = 0
@@ -97,15 +139,26 @@ for t in range(0, maxTimeSteps):
             for p in people:
                 if p.region is r:
                     r.people.append(p)
-                    if p.state == "i1":
-                        total_i1 = total_i1 + 1
-                    elif p.state == "i2":
-                        total_i2 = total_i2 + 1
-                    elif p.state == "u":
-                        total_u = total_u + 1
-        r.updateTotals(total_i1, total_i2, total_u)
+        r.updateTotals()
     print(currentDataRow)
 
+#Print to screen and file
 print(data[0])
 print(totals)
 
+for row in data:
+    for item in row:
+        time.write(str(item) + ",")
+    time.write("\n")
+
+totals_titled = []
+totals_titled.append(data[0])
+totals_titled.append(totals)
+for row in totals_titled:
+    for item in row:
+        total.write(str(item) + ",")
+    total.write("\n")
+
+log.close()
+time.close()
+total.close()

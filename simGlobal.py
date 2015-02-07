@@ -33,9 +33,9 @@ Hospital (node): a place where people can recieve medicine/vaccines, but
 with a limited supply.
 '''
 class Hospital():
-    def __init__(self, region, doctors, initMeds, initVaccines):
+    def __init__(self, region, beds, initMeds, initVaccines):
         self.region = region
-        self.doctors = doctors      #Array of doctors
+        self.numBeds = beds
         self.meds = initMeds
         self.vaccines = initVaccines
 
@@ -45,43 +45,64 @@ number of hospitals, population density, etc.
 '''
 
 class Region():
-    def __init__(self, name, location, isHub, popDens, params):
+    def __init__(self, name, location, isHub, params):
         self.name = name
         self.location = location
         self.isHub = isHub    #True if hub (deleveries from overseas)
         self.hospitals = []  #List of hospital objects
-        self.doctors = []  #List of doctors in this region
         self.people = []
-        self.popDens = popDens  #Population 
+        self.doctors = 0    #Number of doctors in region
+        self.popDens = 0  #Population 
+        self.connectedRegions = []  #List of connected regions (why was this not here?)
         self.beta_c1 = params[0]
         self.beta_c2 = params[1]
         self.beta_f = params[2]
-        self.gamma_h1 = params[3]
-        self.gamma_h2 = params[4]
-        self.gamma_dh = params[5]
-        self.gamma_d = params[6]
-        self.gamma_f = params[7]
-        self.gamma_R = params[8]
-        self.RC_1 = params[9]
-        self.RC_2 = params[10]
-        self.beta_v = params[11]
-        self.beta_h3 = params[12]
+        self.beta_h1 = params[3]
+        self.beta_h2 = params[4]
+        self.gamma_h1 = params[5]
+        self.gamma_h2 = params[6]
+        self.gamma_dh = params[7]
+        self.gamma_d = params[8]
+        self.gamma_f = params[9]
+        self.gamma_R = params[10]
+        self.RC_1 = params[11]
+        self.RC_2 = params[12]
+        self.beta_v = params[13]
+        self.beta_h3 = params[14]
 
         self.total_i1 = 0
         self.total_i2 = 0
         self.total_u = 0
+        self.total_h = 0
 
-    def updateTotals(self, total_i1, total_i2, total_u):
-        self.total_i1 = total_i1
-        self.total_i2 = total_i2
-        self.total_u = total_u
+    def updateTotals(self):
+        self.total_i1 = 0
+        self.total_i2 = 0
+        self.total_u = 0
+        self.doctors = 0
+        self.numBeds = 0
+        self.popDens = len(self.people)
+        for p in self.people:
+            if p.occupation == "d":
+                self.doctors = self.doctors + 1
+            if p.state == "i1":
+                self.total_i1 = self.total_i1 + 1
+            elif p.state == "i2":
+                self.total_i2 = self.total_i2 + 1
+            elif p.state == "u":
+                self.total_u = self.total_u + 1
+            elif p.state == "h":
+                self.total_h = self.total_h + 1
+        for h in self.hospitals:
+            self.numBeds = self.numBeds + h.numBeds
+        self.numBeds = self.numBeds - self.total_h  #Subtract how many are taken
 
 
 '''
 Parameters for different countries
 '''
 LiberiaParams = ([0.16, 0.32, 0.489, 0.062, 0.062, 0.197/3.24, 0.197/3.24, 
-                0.5/10.07, 0.803*0.5/13.31, 1/2.01, 0.5/15.88, 0, 0, 0, 
+                0.5/10.07, 0.803*0.5/13.31, 1/2.01, 1.0/5.0, 0, 0, 0, 
                 0.062])
 
 
@@ -176,9 +197,6 @@ def Activate(p, currentDataRow):    #p a person or doctor in the simulation
             #CAN STILL GET SICK ON THIS DAY IF VACCINATED
             chanceToContact = random.uniform(0,1)
             chanceToGetSick = random.uniform(0,1)
-            #print("chanceToContact: " + str(chanceToContact))
-            #print("chanceToGetSick: " + str(chanceToGetSick))
-            #print("chanceToBeat: " + str(p.region.total_i1/float(p.region.popDens)))
             if (chanceToContact < (p.region.total_i1/float(p.region.popDens))):   
                 #p contacts sick person from infectious1
                 if (chanceToGetSick < p.region.beta_c1):
@@ -201,7 +219,7 @@ def Activate(p, currentDataRow):    #p a person or doctor in the simulation
             newRegion = TryToMove(p)
             if newRegion is not None:
                 p.region = newRegion
-                currentDataRow[6] = currentDataRow[6] + 1
+                currentDataRow[7] = currentDataRow[7] + 1
 
         #[l]atent
         elif p.state == "l":
@@ -214,6 +232,7 @@ def Activate(p, currentDataRow):    #p a person or doctor in the simulation
             newRegion = TryToMove(p)
             if newRegion is not None:
                 p.region = newRegion
+                currentDataRow[7] = currentDataRow[7] + 1
 
         #[i]nfectious[1] - first stage, mildly symptomatic
         elif p.state == "i1":
@@ -225,12 +244,17 @@ def Activate(p, currentDataRow):    #p a person or doctor in the simulation
                 p.state = "i2"
             elif (chanceToRecover < p.region.RC_1): #Spontaneously get cured
                 p.state = "c"
-            elif (chanceToHospitalize < p.region.gamma_h1): #Get into hospital
+                currentDataRow[2] = currentDataRow[2] + 1
+            elif (chanceToHospitalize < p.region.gamma_h1
+                  and p.region.numBeds != 0): #Get into hospital
                 p.state = "h"
+                currentDataRow[6] = currentDataRow[6] + 1
             #TODO: Have them try to move from region to region
-            newRegion = TryToMove(p)
-            if newRegion is not None:
-                p.region = newRegion
+            if p.state != "i2" and p.state != "h":
+                newRegion = TryToMove(p)
+                if newRegion is not None:
+                    p.region = newRegion
+                    currentDataRow[7] = currentDataRow[7] + 1
 
         #[i]nfectious[2] - second stage, most symptomatic
         elif p.state == "i2":
@@ -244,24 +268,33 @@ def Activate(p, currentDataRow):    #p a person or doctor in the simulation
             elif (chanceToRecover < p.region.RC_2): #Spontaneously get cured
                 p.state = "c"
                 currentDataRow[2] = currentDataRow[2] + 1
-            elif (chanceToHospitalize < p.region.gamma_h2): #Get into hospital
+            elif (chanceToHospitalize < p.region.gamma_h2
+                  and p.region.numBeds != 0): #Get into hospital
                 p.state = "h"
-            #Cannot move in this stage
+                currentDataRow[6] = currentDataRow[6] + 1
 
         #[h]ospitalized - get cured, or maybe die trying
         elif p.state == "h":
             chanceToRecover = random.uniform(0,1)
             chanceToSeeDoctor = random.uniform(0,1)
+            chanceToDie = random.uniform(0,1)
 
-            for h in p.region.hospitals:
-                if ((h.meds !=  0) and (chanceToSeeDoctor < len(p.region.doctors)/
-                    (p.region.total_i1 + p.region.total_i2 + 1))):
-                    h.meds = h.meds - 1 #Use meds regardless of if they work
-                    if (chanceToRecover < p.region.gamma_R):    #Get cured
-                        p.state = "c"
-                        currentDataRow[2] = currentDataRow[2] + 1
-                        break
-            #Cannot move in this stage
+            if chanceToDie < p.region.gamma_dh: #Died in hospital
+                p.state = "u"
+                currentDataRow[4] = currentDataRow[4] + 1
+            
+            if p.state == "h":
+                for h in p.region.hospitals:
+                    if ((h.meds !=  0)): #and (chanceToSeeDoctor < p.region.doctors)/
+                        #(p.region.total_i1 + p.region.total_i2 + 1)):
+                        h.meds = h.meds - 1 #Use meds regardless of if they work
+                        if (chanceToRecover < p.region.gamma_R):    #Get cured
+                            p.state = "c"
+                            currentDataRow[2] = currentDataRow[2] + 1
+                            break
+                            #Cannot move in this stage
+                        #print("chanceToRecover: " + str(chanceToRecover))
+                        #print("gamma_R: " + str(p.region.gamma_R))
 
 
 
