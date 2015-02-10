@@ -116,6 +116,10 @@ class Region():
                          * self.vaccines / len(self.regionShippingTo))   #Ship this many to each
         medsToShip = (self.regionMedsShippingPercentage
                      * self.meds / len(self.regionShippingTo))
+        suscSum = 0
+        vaccSum = 0
+        medsSum = 0
+
         for r in self.regionShippingTo:
             r.vaccines = r.vaccines + vaccinesToShip
             self.vaccines = self.vaccines - vaccinesToShip
@@ -130,6 +134,8 @@ LiberiaParams = ([0.16, 0.32, 0.489, 0.062, 0.062, 0.197/3.24, 0.197/3.24,
                 0.0551, 0.0335, 1/2.01, 0.028, 0, 0, 0, 
                 0.062])
 
+SierraParams = ([0.128,0.256,0.111,0.080,0.080,.197/4.12,2*.197/4.12,.75/6.26,
+                 0.803*.75/10.38,1/4.50,.75/15.88,0.10,0.10,0,0.080])
 
 '''
 Distance: euclidean distance between two points with [lat,long]
@@ -259,7 +265,7 @@ def Activate(p, currentDataRow, movementProbability, medsEffectiveness):
             chanceToContact = random.uniform(0,1)
             chanceToGetSick = random.uniform(0,1)
             factor = 10.0
-            if (chanceToContact < (p.region.total_i1/float(factor*p.region.popDens))):   
+            if (chanceToContact < (1*p.region.total_i1/float(factor*p.region.popDens))):   
                 #p contacts sick person from infectious1
                 if (chanceToGetSick < p.region.beta_c1):
                     #p gets infected from infectious1 
